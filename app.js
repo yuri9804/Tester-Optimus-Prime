@@ -175,7 +175,7 @@ class MultiTimeframeTradingTester {
     initGoogleAuth() {
         // IMPORTANTE: Sostituisci con le tue credenziali
         const API_KEY = 'YOUR_API_KEY_HERE';
-        const CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+        const CLIENT_ID = '288695427040-iq3oh1kgs2uqbafpq6pgbude5eii5d8o.apps.googleusercontent.com';
         
         gapi.client.init({
             apiKey: API_KEY,
