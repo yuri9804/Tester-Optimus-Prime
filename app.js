@@ -1,87 +1,94 @@
-// Multi-Timeframe Trading Indicator Tester with Time and Percentage Features – JavaScript
-
+// Multi-Timeframe Trading Indicator Tester with Time and Percentage Features
 class MultiTimeframeTradingTester {
     constructor() {
         /* Config */
         this.stopLossLevels = [30, 50, 75, 100];
-        this.riskRewardRatios = ['1:1', '1:2', '1:3', '1:4'];
-        this.rrValues = { '1:1': 1, '1:2': 2, '1:3': 3, '1:4': 4 }; // For percentage calculations
+        this.riskRewardRatios = ['1:1', '1:2', '1:3', '1:4', '1:5']; // AGGIUNTO 1:5
+        this.rrValues = { 
+            '1:1': 1, 
+            '1:2': 2, 
+            '1:3': 3, 
+            '1:4': 4,
+            '1:5': 5  // AGGIUNTO 1:5
+        };
+        
         this.timeframes = [
             { code: 'M1', name: '1 Minuto', color: '#FF6B6B' },
             { code: 'M3', name: '3 Minuti', color: '#4ECDC4' },
             { code: 'M5', name: '5 Minuti', color: '#45B7D1' },
             { code: 'M15', name: '15 Minuti', color: '#96CEB4' },
+            { code: 'M30', name: '30 Minuti', color: '#FF8C00' }, // AGGIUNTO M30
             { code: 'H1', name: '1 Ora', color: '#FFEAA7' },
             { code: 'H4', name: '4 Ore', color: '#DDA0DD' }
         ];
+        
         this.defaultTimeframeData = {
             trades: [],
             statistics: {},
             percentages: {},
             lastModified: null
         };
-
+        
         /* State */
-        this.db = null; // IndexedDB instance
-        this.data = {}; // { timeframeCode: {...defaultTimeframeData} }
+        this.db = null;
+        this.data = {};
         this.currentTimeframe = 'M1';
-
+        
         /* Bootstrap */
         this.initDatabase();
     }
-
+    
     /* ----------------- IndexedDB ----------------- */
     initDatabase() {
-        const request = indexedDB.open('tradingTesterDB', 2); // Increment version for schema change
-
+        const request = indexedDB.open('tradingTesterDB', 2);
+        
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
             if (!db.objectStoreNames.contains('timeframes')) {
                 db.createObjectStore('timeframes', { keyPath: 'timeframe' });
             }
         };
-
+        
         request.onsuccess = (event) => {
             this.db = event.target.result;
             this.loadAllTimeframes();
         };
-
+        
         request.onerror = () => {
             console.error('Impossibile inizializzare il database IndexedDB');
-            // Fallback in-memory
             this.timeframes.forEach(tf => {
                 this.data[tf.code] = JSON.parse(JSON.stringify(this.defaultTimeframeData));
             });
             this.afterDataReady();
         };
     }
-
+    
     loadAllTimeframes() {
         let loaded = 0;
         const total = this.timeframes.length;
-
+        
         this.timeframes.forEach(tf => {
             const transaction = this.db.transaction(['timeframes'], 'readonly');
             const store = transaction.objectStore('timeframes');
             const getRequest = store.get(tf.code);
-
+            
             getRequest.onsuccess = (event) => {
                 const result = event.target.result;
                 if (result) {
                     this.data[tf.code] = result;
-                    // Ensure percentages object exists
                     if (!this.data[tf.code].percentages) {
                         this.data[tf.code].percentages = {};
                     }
                 } else {
                     this.data[tf.code] = JSON.parse(JSON.stringify(this.defaultTimeframeData));
                 }
+                
                 loaded++;
                 if (loaded === total) {
                     this.afterDataReady();
                 }
             };
-
+            
             getRequest.onerror = () => {
                 console.error('Errore caricamento timeframe', tf.code);
                 this.data[tf.code] = JSON.parse(JSON.stringify(this.defaultTimeframeData));
@@ -92,34 +99,31 @@ class MultiTimeframeTradingTester {
             };
         });
     }
-
+    
     saveTimeframeData(timeframe) {
         if (!this.db) return;
+        
         const dataToSave = { ...this.data[timeframe], timeframe };
         const transaction = this.db.transaction(['timeframes'], 'readwrite');
         const store = transaction.objectStore('timeframes');
         store.put(dataToSave);
     }
-
+    
     /* ----------------- UI Bootstrap ----------------- */
     afterDataReady() {
         this.initializeEventListeners();
-        // Default timeframe
         this.switchTimeframe(this.currentTimeframe);
-        // Automatic backup every 30 minutes
         setInterval(() => this.autoBackup(), 30 * 60 * 1000);
     }
-
+    
     initializeEventListeners() {
-        // Timeframe tab clicks
         document.querySelectorAll('.timeframe-tab').forEach(btn => {
             btn.addEventListener('click', () => {
                 const tf = btn.dataset.timeframe;
                 this.switchTimeframe(tf);
             });
         });
-
-        // Control buttons
+        
         document.getElementById('addRowBtn').addEventListener('click', () => this.addRow());
         document.getElementById('clearCurrentBtn').addEventListener('click', () => this.clearCurrent());
         document.getElementById('resetAllBtn').addEventListener('click', () => this.resetAll());
@@ -127,8 +131,7 @@ class MultiTimeframeTradingTester {
         document.getElementById('exportCurrentBtn').addEventListener('click', () => this.exportCurrent());
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFileInput').click());
         document.getElementById('importFileInput').addEventListener('change', (e) => this.handleImport(e));
-
-        // Shortcuts
+        
         document.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
                 e.preventDefault();
@@ -140,11 +143,11 @@ class MultiTimeframeTradingTester {
             }
         });
     }
-
+    
     /* ----------------- Timeframe Handling ----------------- */
     switchTimeframe(tfCode) {
         this.currentTimeframe = tfCode;
-        // Update active tab
+        
         document.querySelectorAll('.timeframe-tab').forEach(btn => {
             if (btn.dataset.timeframe === tfCode) {
                 btn.classList.add('active');
@@ -152,53 +155,54 @@ class MultiTimeframeTradingTester {
                 btn.classList.remove('active');
             }
         });
-
-        // Update labels
+        
         const tfInfo = this.timeframes.find(t => t.code === tfCode);
         document.getElementById('currentTimeframeDisplay').textContent = `${tfInfo.code} - ${tfInfo.name}`;
         document.getElementById('statsTimeframeLabel').textContent = `${tfInfo.code} - ${tfInfo.name}`;
-
-        // Render table & stats
+        
         this.renderTable();
         this.updateStatistics();
         this.updatePercentages();
     }
-
+    
     /* ----------------- Table Operations ----------------- */
     addRow() {
         const tradeId = Date.now();
         const newTrade = {
             id: tradeId,
             date: '',
-            time: '', // NEW: Time field
+            time: '',
             entryPrice: '',
             results: {}
         };
+        
         this.stopLossLevels.forEach(sl => {
             newTrade.results[sl] = {};
             this.riskRewardRatios.forEach(rr => {
                 newTrade.results[sl][rr] = 'empty';
             });
         });
-
+        
         this.data[this.currentTimeframe].trades.push(newTrade);
         this.data[this.currentTimeframe].lastModified = new Date().toISOString();
+        
         this.saveTimeframeData(this.currentTimeframe);
         this.renderTable();
         this.updateStatistics();
         this.updatePercentages();
     }
-
+    
     removeRow(tradeId) {
         const tfData = this.data[this.currentTimeframe];
         tfData.trades = tfData.trades.filter(t => t.id !== tradeId);
         tfData.lastModified = new Date().toISOString();
+        
         this.saveTimeframeData(this.currentTimeframe);
         this.renderTable();
         this.updateStatistics();
         this.updatePercentages();
     }
-
+    
     updateTradeData(tradeId, field, value) {
         const trade = this.data[this.currentTimeframe].trades.find(t => t.id === tradeId);
         if (trade) {
@@ -206,369 +210,314 @@ class MultiTimeframeTradingTester {
             this.data[this.currentTimeframe].lastModified = new Date().toISOString();
             this.saveTimeframeData(this.currentTimeframe);
             this.updateStatistics();
-            // No need to update percentages for data-only changes
         }
     }
-
+    
     toggleTradeResult(tradeId, stopLoss, riskReward) {
         const trade = this.data[this.currentTimeframe].trades.find(t => t.id === tradeId);
         if (!trade) return;
-
+        
         const current = trade.results[stopLoss][riskReward];
         let next = 'empty';
         if (current === 'empty') next = 'tp';
         else if (current === 'tp') next = 'sl';
-        // else remains empty
-
+        
         trade.results[stopLoss][riskReward] = next;
         this.data[this.currentTimeframe].lastModified = new Date().toISOString();
+        
         this.saveTimeframeData(this.currentTimeframe);
         this.renderTable();
         this.updateStatistics();
-        this.updatePercentages(); // UPDATE: Recalculate percentages when results change
+        this.updatePercentages();
     }
-
+    
     renderTable() {
         const tbody = document.getElementById('tableBody');
         const trades = this.data[this.currentTimeframe].trades;
-
+        
         if (trades.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="19" class="empty-state">
+                    <td colspan="${3 + this.stopLossLevels.length * this.riskRewardRatios.length}" class="empty-state">
                         <div class="empty-state-icon">📊</div>
-                        <p>Nessun trade inserito. Clicca "Aggiungi Riga" per iniziare.</p>
+                        Nessun trade inserito. Clicca "Aggiungi Riga" per iniziare.
                     </td>
                 </tr>
             `;
             return;
         }
-
-        tbody.innerHTML = trades.map(trade => this.renderRow(trade)).join('');
-    }
-
-    renderRow(trade) {
-        return `
-            <tr>
-                <td>
-                    <div class="datetime-inputs">
-                        <input type="date" class="date-input" value="${trade.date}" onchange="app.updateTradeData(${trade.id}, 'date', this.value)">
-                        <input type="time" class="time-input" value="${trade.time}" onchange="app.updateTradeData(${trade.id}, 'time', this.value)">
-                    </div>
-                </td>
-                <td>
-                    <input type="number" class="price-input" step="0.0001" placeholder="0.0000" value="${trade.entryPrice}" onchange="app.updateTradeData(${trade.id}, 'entryPrice', this.value)">
-                </td>
-                ${this.renderTradeResultCells(trade)}
-                <td>
-                    <button class="btn btn--sm btn--outline" title="Rimuovi riga" onclick="app.removeRow(${trade.id})">✕</button>
-                </td>
-            </tr>
-        `;
-    }
-
-    renderTradeResultCells(trade) {
-        let cells = '';
-        this.stopLossLevels.forEach(sl => {
-            this.riskRewardRatios.forEach(rr => {
-                const res = trade.results[sl][rr];
-                const cls = res === 'empty' ? '' : res;
-                cells += `
+        
+        tbody.innerHTML = trades.map(trade => {
+            const resultCells = this.stopLossLevels.map(sl => {
+                const slResults = this.riskRewardRatios.map(rr => {
+                    const status = trade.results[sl][rr];
+                    return `<td><span class="trade-result ${status}" onclick="app.toggleTradeResult(${trade.id}, ${sl}, '${rr}')"></span></td>`;
+                }).join('');
+                return slResults;
+            }).join('');
+            
+            return `
+                <tr>
                     <td>
-                        <div class="trade-result ${cls}" onclick="app.toggleTradeResult(${trade.id}, ${sl}, '${rr}')" title="Clicca per cambiare: Vuoto → TP (Verde) → SL (Rosso) → Vuoto"></div>
+                        <div class="datetime-inputs">
+                            <input type="date" class="date-input" value="${trade.date}" onchange="app.updateTradeData(${trade.id}, 'date', this.value)">
+                            <input type="time" class="time-input" value="${trade.time}" onchange="app.updateTradeData(${trade.id}, 'time', this.value)">
+                        </div>
                     </td>
-                `;
+                    <td>
+                        <input type="text" class="price-input" value="${trade.entryPrice}" placeholder="Prezzo" onchange="app.updateTradeData(${trade.id}, 'entryPrice', this.value)">
+                    </td>
+                    ${resultCells}
+                    <td>
+                        <button class="btn btn--outline btn--sm btn--danger" onclick="app.removeRow(${trade.id})">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+    
+    /* ----------------- Statistics ----------------- */
+    updateStatistics() {
+        const trades = this.data[this.currentTimeframe].trades;
+        const stats = {};
+        
+        this.stopLossLevels.forEach(sl => {
+            stats[sl] = {};
+            this.riskRewardRatios.forEach(rr => {
+                const results = trades.map(t => t.results[sl][rr]).filter(r => r !== 'empty');
+                const tpCount = results.filter(r => r === 'tp').length;
+                const slCount = results.filter(r => r === 'sl').length;
+                const total = results.length;
+                
+                stats[sl][rr] = {
+                    tp: tpCount,
+                    sl: slCount,
+                    total: total,
+                    winRate: total > 0 ? (tpCount / total * 100).toFixed(1) : '0.0'
+                };
             });
         });
-        return cells;
+        
+        this.data[this.currentTimeframe].statistics = stats;
+        this.renderStatistics();
     }
-
-    /* ----------------- NEW: Percentage Calculations ----------------- */
-    calculateColumnPercentages() {
+    
+    updatePercentages() {
         const trades = this.data[this.currentTimeframe].trades;
         const percentages = {};
-
+        
         this.stopLossLevels.forEach(sl => {
             percentages[sl] = {};
             this.riskRewardRatios.forEach(rr => {
-                let tpCount = 0;
-                let slCount = 0;
+                const results = trades.map(t => t.results[sl][rr]).filter(r => r !== 'empty');
+                const tpCount = results.filter(r => r === 'tp').length;
+                const slCount = results.filter(r => r === 'sl').length;
                 
-                trades.forEach(trade => {
-                    const result = trade.results[sl][rr];
-                    if (result === 'tp') tpCount++;
-                    else if (result === 'sl') slCount++;
-                });
-
-                // Calculate gain: (TP × RR%) - (SL × 1%)
                 const rrValue = this.rrValues[rr];
-                const gain = (tpCount * rrValue) - (slCount * 1);
-                percentages[sl][rr] = gain;
+                const tpGain = tpCount * rrValue;
+                const slLoss = slCount * 1;
+                const totalPercentage = tpGain - slLoss;
+                
+                percentages[sl][rr] = {
+                    value: totalPercentage,
+                    formatted: totalPercentage > 0 ? `+${totalPercentage}%` : `${totalPercentage}%`
+                };
             });
         });
-
-        return percentages;
+        
+        this.data[this.currentTimeframe].percentages = percentages;
+        this.renderPercentages();
     }
-
-    updatePercentages() {
-        const percentages = this.calculateColumnPercentages();
+    
+    renderStatistics() {
+        const container = document.getElementById('statisticsContainer');
+        const stats = this.data[this.currentTimeframe].statistics;
+        
+        const statsHtml = this.stopLossLevels.map(sl => {
+            const slStats = this.riskRewardRatios.map(rr => {
+                const stat = stats[sl][rr];
+                const winRateClass = parseFloat(stat.winRate) >= 60 ? 'positive-stat' : 
+                                   parseFloat(stat.winRate) >= 40 ? '' : 'negative-stat';
+                
+                return `
+                    <div class="stat-row">
+                        <span>RR ${rr}:</span>
+                        <span class="${winRateClass}">${stat.tp}/${stat.total} (${stat.winRate}%)</span>
+                    </div>
+                `;
+            }).join('');
+            
+            return `
+                <div class="stat-card">
+                    <h4>Stop Loss ${sl} Pips</h4>
+                    ${slStats}
+                </div>
+            `;
+        }).join('');
+        
+        container.innerHTML = statsHtml;
+    }
+    
+    renderPercentages() {
+        const percentages = this.data[this.currentTimeframe].percentages;
         
         this.stopLossLevels.forEach(sl => {
-            this.riskRewardRatios.forEach((rr, index) => {
-                const rrIndex = index + 1; // 1-based for element IDs
-                const elementId = `perc-${sl}-${rrIndex}`;
-                const element = document.getElementById(elementId);
-                
-                if (element) {
-                    const gain = percentages[sl][rr];
-                    let displayText;
+            this.riskRewardRatios.forEach(rr => {
+                const cellId = `percentage-${sl}-${rr.replace(':', '')}`;
+                const cell = document.getElementById(cellId);
+                if (cell) {
+                    const percentage = percentages[sl][rr];
+                    cell.textContent = percentage.formatted;
+                    cell.className = 'percentage-header';
                     
-                    if (gain > 0) {
-                        displayText = `+${gain.toFixed(1)}%`;
-                        element.className = 'percentage-header percentage-positive';
-                    } else if (gain < 0) {
-                        displayText = `${gain.toFixed(1)}%`;
-                        element.className = 'percentage-header percentage-negative';
-                    } else {
-                        displayText = '0%';
-                        element.className = 'percentage-header';
+                    if (percentage.value > 0) {
+                        cell.classList.add('percentage-positive');
+                    } else if (percentage.value < 0) {
+                        cell.classList.add('percentage-negative');
                     }
-                    
-                    element.textContent = displayText;
                 }
             });
         });
-
-        // Save percentages to data store
-        this.data[this.currentTimeframe].percentages = percentages;
-        this.saveTimeframeData(this.currentTimeframe);
     }
-
-    /* ----------------- Statistics ----------------- */
-    calculateStatistics(trades) {
-        const stats = {};
-        this.stopLossLevels.forEach(sl => {
-            stats[sl] = {
-                totalTrades: 0,
-                winRate: 0,
-                bestRR: 'N/A',
-                rrStats: {}
-            };
-            this.riskRewardRatios.forEach(rr => {
-                stats[sl].rrStats[rr] = { total: 0, wins: 0, losses: 0, winRate: 0 };
-            });
-        });
-
-        trades.forEach(trade => {
-            this.stopLossLevels.forEach(sl => {
-                this.riskRewardRatios.forEach(rr => {
-                    const res = trade.results[sl][rr];
-                    if (res !== 'empty') {
-                        stats[sl].rrStats[rr].total++;
-                        stats[sl].totalTrades++;
-                        if (res === 'tp') stats[sl].rrStats[rr].wins++;
-                        if (res === 'sl') stats[sl].rrStats[rr].losses++;
-                    }
-                });
-            });
-        });
-
-        this.stopLossLevels.forEach(sl => {
-            let totalWins = 0;
-            const stat = stats[sl];
-            this.riskRewardRatios.forEach(rr => {
-                const rrStat = stat.rrStats[rr];
-                if (rrStat.total > 0) {
-                    rrStat.winRate = (rrStat.wins / rrStat.total) * 100;
-                    totalWins += rrStat.wins;
-                }
-            });
-            if (stat.totalTrades > 0) {
-                stat.winRate = (totalWins / stat.totalTrades) * 100;
-                // Best RR by highest winrate (min 3 trades)
-                let best = { rr: 'N/A', rate: 0 };
-                this.riskRewardRatios.forEach(rr => {
-                    const rrStat = stat.rrStats[rr];
-                    if (rrStat.total >= 3 && rrStat.winRate > best.rate) {
-                        best = { rr, rate: rrStat.winRate };
-                    }
-                });
-                stat.bestRR = best.rr;
-            }
-        });
-
-        return stats;
-    }
-
-    updateStatistics() {
-        const trades = this.data[this.currentTimeframe].trades;
-        const stats = this.calculateStatistics(trades);
-        this.stopLossLevels.forEach(sl => {
-            const st = stats[sl];
-            document.getElementById(`total-${sl}`).textContent = st.totalTrades;
-            const wrElem = document.getElementById(`winrate-${sl}`);
-            wrElem.textContent = st.totalTrades > 0 ? `${st.winRate.toFixed(1)}%` : '0%';
-            wrElem.classList.remove('positive-stat', 'negative-stat');
-            if (st.winRate >= 60) wrElem.classList.add('positive-stat');
-            else if (st.totalTrades > 0 && st.winRate < 40) wrElem.classList.add('negative-stat');
-            const bestRRElem = document.getElementById(`best-rr-${sl}`);
-            bestRRElem.textContent = st.bestRR;
-            bestRRElem.classList.remove('positive-stat');
-            if (st.bestRR !== 'N/A') bestRRElem.classList.add('positive-stat');
-        });
-        // Save statistics to data store
-        this.data[this.currentTimeframe].statistics = stats;
-        this.saveTimeframeData(this.currentTimeframe);
-    }
-
-    /* ----------------- Clear / Reset ----------------- */
+    
+    /* ----------------- Data Management ----------------- */
     clearCurrent() {
-        const confirmClear = confirm('Cancellare tutte le righe del timeframe corrente?');
-        if (!confirmClear) return;
-        this.data[this.currentTimeframe].trades = [];
-        this.data[this.currentTimeframe].lastModified = new Date().toISOString();
-        this.saveTimeframeData(this.currentTimeframe);
-        this.renderTable();
-        this.updateStatistics();
-        this.updatePercentages();
-        this.notify('Timeframe svuotato con successo.', 'success');
+        if (confirm('Sei sicuro di voler cancellare tutti i trade del timeframe corrente?')) {
+            this.data[this.currentTimeframe].trades = [];
+            this.data[this.currentTimeframe].lastModified = new Date().toISOString();
+            this.saveTimeframeData(this.currentTimeframe);
+            this.renderTable();
+            this.updateStatistics();
+            this.updatePercentages();
+            this.showNotification('Timeframe corrente pulito con successo!', 'success');
+        }
     }
-
+    
     resetAll() {
-        const confirmReset = confirm('Reset completo di tutti i timeframe?');
-        if (!confirmReset) return;
-        this.timeframes.forEach(tf => {
-            this.data[tf.code] = JSON.parse(JSON.stringify(this.defaultTimeframeData));
-            this.saveTimeframeData(tf.code);
-        });
-        this.switchTimeframe(this.currentTimeframe);
-        this.notify('Reset completo effettuato.', 'warning');
+        if (confirm('Sei sicuro di voler resettare TUTTI i dati di TUTTI i timeframe? Questa azione non può essere annullata!')) {
+            this.timeframes.forEach(tf => {
+                this.data[tf.code] = JSON.parse(JSON.stringify(this.defaultTimeframeData));
+                this.saveTimeframeData(tf.code);
+            });
+            this.renderTable();
+            this.updateStatistics();
+            this.updatePercentages();
+            this.showNotification('Tutti i dati sono stati resettati!', 'warning');
+        }
     }
-
-    /* ----------------- Export / Import ----------------- */
+    
     exportAll() {
         const exportData = {
-            timeframes: this.data,
-            exportedAt: new Date().toISOString(),
-            version: '2.0' // NEW: Version with time and percentage features
+            version: '2.0',
+            timestamp: new Date().toISOString(),
+            timeframes: this.data
         };
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-        this.downloadBlob(blob, `trading_data_all_${this.timestamp()}.json`);
-        this.notify('Dati esportati con successo.', 'success');
-    }
-
-    exportCurrent() {
-        const trades = this.data[this.currentTimeframe].trades;
-        const csv = this.tradesToCsv(trades);
-        const blob = new Blob([csv], { type: 'text/csv' });
-        this.downloadBlob(blob, `trading_${this.currentTimeframe}_${this.timestamp()}.csv`);
-        this.notify(`Timeframe ${this.currentTimeframe} esportato in CSV.`, 'success');
-    }
-
-    tradesToCsv(trades) {
-        const headers = ['date', 'time', 'entryPrice']; // NEW: Include time in CSV
-        this.stopLossLevels.forEach(sl => {
-            this.riskRewardRatios.forEach(rr => {
-                headers.push(`SL${sl}_${rr}`);
-            });
-        });
-        const rows = trades.map(trade => {
-            const row = [trade.date, trade.time, trade.entryPrice]; // NEW: Include time in row
-            this.stopLossLevels.forEach(sl => {
-                this.riskRewardRatios.forEach(rr => {
-                    row.push(trade.results[sl][rr]);
-                });
-            });
-            return row.join(',');
-        });
-        return [headers.join(','), ...rows].join('\n');
-    }
-
-    downloadBlob(blob, filename) {
+        
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
+        
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
+        a.download = `trading_data_all_${new Date().toISOString().split('T')[0]}.json`;
         a.click();
-        document.body.removeChild(a);
+        
         URL.revokeObjectURL(url);
+        this.showNotification('Dati esportati con successo!', 'success');
     }
-
+    
+    exportCurrent() {
+        const exportData = {
+            version: '2.0',
+            timestamp: new Date().toISOString(),
+            timeframe: this.currentTimeframe,
+            data: this.data[this.currentTimeframe]
+        };
+        
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `trading_data_${this.currentTimeframe}_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        
+        URL.revokeObjectURL(url);
+        this.showNotification(`Dati ${this.currentTimeframe} esportati con successo!`, 'success');
+    }
+    
     handleImport(event) {
         const file = event.target.files[0];
         if (!file) return;
+        
         const reader = new FileReader();
         reader.onload = (e) => {
-            const content = e.target.result;
             try {
-                const json = JSON.parse(content);
-                if (json.timeframes) {
-                    // Validate and migrate structure if needed
-                    this.timeframes.forEach(tf => {
-                        if (json.timeframes[tf.code]) {
-                            const tfData = json.timeframes[tf.code];
-                            
-                            // Migrate old data structure to include time and percentages
-                            if (tfData.trades) {
-                                tfData.trades.forEach(trade => {
-                                    if (!trade.time) {
-                                        trade.time = ''; // Add missing time field
-                                    }
-                                });
-                            }
-                            if (!tfData.percentages) {
-                                tfData.percentages = {}; // Add missing percentages object
-                            }
-                            
-                            this.data[tf.code] = tfData;
-                            this.saveTimeframeData(tf.code);
+                const importData = JSON.parse(e.target.result);
+                
+                if (importData.timeframes) {
+                    Object.keys(importData.timeframes).forEach(tfCode => {
+                        if (this.data[tfCode]) {
+                            this.data[tfCode] = importData.timeframes[tfCode];
+                            this.saveTimeframeData(tfCode);
                         }
                     });
-                    this.switchTimeframe(this.currentTimeframe);
-                    this.notify('Dati importati con successo.', 'success');
-                } else {
-                    throw new Error('Formato JSON non valido');
+                    this.showNotification('Tutti i dati importati con successo!', 'success');
+                } else if (importData.timeframe && importData.data) {
+                    if (this.data[importData.timeframe]) {
+                        this.data[importData.timeframe] = importData.data;
+                        this.saveTimeframeData(importData.timeframe);
+                        this.showNotification(`Dati ${importData.timeframe} importati con successo!`, 'success');
+                    }
                 }
-            } catch (err) {
-                this.notify('Errore formato JSON: ' + err.message, 'error');
+                
+                this.renderTable();
+                this.updateStatistics();
+                this.updatePercentages();
+                
+            } catch (error) {
+                console.error('Errore durante l\'importazione:', error);
+                this.showNotification('Errore durante l\'importazione del file!', 'error');
             }
         };
+        
         reader.readAsText(file);
-        // Reset input
         event.target.value = '';
     }
-
-    /* ----------------- Notifications ----------------- */
-    notify(message, type = 'info') {
-        const area = document.getElementById('notificationArea');
-        area.textContent = message;
-        area.className = `notification-area ${type}`;
-        area.classList.remove('hidden');
-        setTimeout(() => area.classList.add('hidden'), 4000);
-    }
-
-    /* ----------------- Auto Backup ----------------- */
+    
     autoBackup() {
-        const data = {
+        const backupData = {
+            version: '2.0',
+            timestamp: new Date().toISOString(),
             timeframes: this.data,
-            backupAt: new Date().toISOString(),
-            version: '2.0'
+            type: 'auto-backup'
         };
-        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-        this.downloadBlob(blob, `trading_backup_${this.timestamp()}.json`);
-        this.notify('Backup automatico esportato.', 'info');
+        
+        try {
+            localStorage.setItem('tradingTesterBackup', JSON.stringify(backupData));
+            console.log('Backup automatico completato');
+        } catch (error) {
+            console.error('Errore durante il backup automatico:', error);
+        }
     }
-
-    /* ----------------- Helpers ----------------- */
-    timestamp() {
-        return new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification-area ${type}`;
+        notification.textContent = message;
+        
+        const container = document.querySelector('.container');
+        container.insertBefore(notification, container.firstChild);
+        
+        setTimeout(() => {
+            notification.remove();
+        }, 5000);
     }
 }
 
-// Initialize global app instance when DOM ready
-let app = null;
-window.addEventListener('DOMContentLoaded', () => {
+// Initialize the app
+let app;
+document.addEventListener('DOMContentLoaded', () => {
     app = new MultiTimeframeTradingTester();
-    window.app = app; // expose for inline handlers
 });
