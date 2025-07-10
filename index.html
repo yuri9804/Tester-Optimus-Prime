@@ -11,7 +11,7 @@
         <!-- Header -->
         <header class="header">
             <h1>📊 Trading Indicator Tester</h1>
-            <p>Analizza le performance degli indicatori su diversi timeframe con calcoli percentuali avanzati</p>
+            <p>Analizza le performance degli indicatori su diversi timeframe con esportazione Google Sheets</p>
         </header>
 
         <!-- Timeframe Navigation -->
@@ -60,6 +60,12 @@
             Timeframe Corrente: <span class="current-tf-label" id="currentTimeframeDisplay">M1 - 1 Minuto</span>
         </div>
 
+        <!-- Google Sheets Status -->
+        <div class="google-sheets-status" id="googleSheetsStatus">
+            <p>📊 <strong>Google Sheets:</strong> <span id="authStatus">Inizializzazione...</span></p>
+            <button id="authGoogleBtn" class="btn btn--outline btn--sm">🔐 Accedi a Google</button>
+        </div>
+
         <!-- Controls -->
         <div class="controls">
             <div class="control-group">
@@ -68,9 +74,13 @@
                 <button id="resetAllBtn" class="btn btn--outline btn--danger">🔄 Reset Tutto</button>
             </div>
             <div class="control-group">
-                <button id="exportAllBtn" class="btn btn--secondary">📤 Esporta Tutto</button>
-                <button id="exportCurrentBtn" class="btn btn--secondary">📤 Esporta Corrente</button>
-                <button id="importBtn" class="btn btn--secondary">📥 Importa</button>
+                <button id="exportGoogleBtn" class="btn btn--primary">📊 Esporta in Google Sheets</button>
+                <button id="exportCSVBtn" class="btn btn--secondary">📄 Scarica CSV Corrente</button>
+                <button id="exportAllCSVBtn" class="btn btn--secondary">📄 Scarica Tutti CSV</button>
+            </div>
+            <div class="control-group">
+                <button id="exportAllBtn" class="btn btn--outline">📤 Esporta JSON (Backup)</button>
+                <button id="importBtn" class="btn btn--outline">📥 Importa</button>
                 <input type="file" id="importFileInput" accept=".json" class="hidden">
             </div>
         </div>
@@ -167,6 +177,7 @@
             <p>Le statistiche e percentuali si aggiornano automaticamente.</p>
             <p><strong>Scorciatoie:</strong> Ctrl+N (nuova riga), Ctrl+Shift+C (cancella timeframe corrente)</p>
             <p><strong>Calcolo Percentuali:</strong> TP = valore RR%, SL = sempre 1%. Guadagno = (TP × RR%) - (SL × 1%)</p>
+            <p><strong>Esportazione:</strong> Configura le credenziali Google API per esportare in Google Sheets</p>
         </div>
     </div>
 
