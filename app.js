@@ -1,15 +1,15 @@
-// Multi-Timeframe Trading Indicator Tester with Time and Percentage Features
+// Multi-Timeframe Trading Indicator Tester with Google Sheets Export
 class MultiTimeframeTradingTester {
     constructor() {
         /* Config */
         this.stopLossLevels = [30, 50, 75, 100];
-        this.riskRewardRatios = ['1:1', '1:2', '1:3', '1:4', '1:5']; // AGGIUNTO 1:5
+        this.riskRewardRatios = ['1:1', '1:2', '1:3', '1:4', '1:5'];
         this.rrValues = { 
             '1:1': 1, 
             '1:2': 2, 
             '1:3': 3, 
             '1:4': 4,
-            '1:5': 5  // AGGIUNTO 1:5
+            '1:5': 5
         };
         
         this.timeframes = [
@@ -17,7 +17,7 @@ class MultiTimeframeTradingTester {
             { code: 'M3', name: '3 Minuti', color: '#4ECDC4' },
             { code: 'M5', name: '5 Minuti', color: '#45B7D1' },
             { code: 'M15', name: '15 Minuti', color: '#96CEB4' },
-            { code: 'M30', name: '30 Minuti', color: '#FF8C00' }, // AGGIUNTO M30
+            { code: 'M30', name: '30 Minuti', color: '#FF8C00' },
             { code: 'H1', name: '1 Ora', color: '#FFEAA7' },
             { code: 'H4', name: '4 Ore', color: '#DDA0DD' }
         ];
@@ -33,6 +33,7 @@ class MultiTimeframeTradingTester {
         this.db = null;
         this.data = {};
         this.currentTimeframe = 'M1';
+        this.googleSheetsReady = false;
         
         /* Bootstrap */
         this.initDatabase();
@@ -117,6 +118,7 @@ class MultiTimeframeTradingTester {
     }
     
     initializeEventListeners() {
+        // Event listeners esistenti
         document.querySelectorAll('.timeframe-tab').forEach(btn => {
             btn.addEventListener('click', () => {
                 const tf = btn.dataset.timeframe;
@@ -128,10 +130,19 @@ class MultiTimeframeTradingTester {
         document.getElementById('clearCurrentBtn').addEventListener('click', () => this.clearCurrent());
         document.getElementById('resetAllBtn').addEventListener('click', () => this.resetAll());
         document.getElementById('exportAllBtn').addEventListener('click', () => this.exportAll());
-        document.getElementById('exportCurrentBtn').addEventListener('click', () => this.exportCurrent());
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFileInput').click());
         document.getElementById('importFileInput').addEventListener('change', (e) => this.handleImport(e));
         
+        // Nuovi event listeners per Google Sheets
+        document.getElementById('exportGoogleBtn').addEventListener('click', () => this.exportToGoogleSheets());
+        document.getElementById('exportCSVBtn').addEventListener('click', () => this.downloadCSV());
+        document.getElementById('exportAllCSVBtn').addEventListener('click', () => this.downloadAllCSV());
+        document.getElementById('authGoogleBtn').addEventListener('click', () => this.authenticateGoogle());
+        
+        // Inizializza Google Sheets API
+        this.initGoogleSheetsAPI();
+        
+        // Event listeners per tastiera
         document.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
                 e.preventDefault();
@@ -141,6 +152,414 @@ class MultiTimeframeTradingTester {
                 e.preventDefault();
                 this.clearCurrent();
             }
+        });
+    }
+    
+    /* ----------------- Google Sheets API ----------------- */
+    initGoogleSheetsAPI() {
+        // Carica l'API Google Sheets
+        const script = document.createElement('script');
+        script.src = 'https://apis.google.com/js/api.js';
+        script.onload = () => {
+            if (typeof gapi !== 'undefined') {
+                gapi.load('client:auth2', () => this.initGoogleAuth());
+            }
+        };
+        script.onerror = () => {
+            console.error('Impossibile caricare Google APIs');
+            this.updateAuthStatus('Errore caricamento API');
+        };
+        document.head.appendChild(script);
+    }
+    
+    initGoogleAuth() {
+        // IMPORTANTE: Sostituisci con le tue credenziali
+        const API_KEY = 'YOUR_API_KEY_HERE';
+        const CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+        
+        gapi.client.init({
+            apiKey: API_KEY,
+            clientId: CLIENT_ID,
+            discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+            scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file'
+        }).then(() => {
+            this.googleSheetsReady = true;
+            this.updateAuthStatus('Pronto');
+            console.log('Google Sheets API inizializzato');
+        }).catch(error => {
+            console.error('Errore inizializzazione Google Auth:', error);
+            this.updateAuthStatus('Errore configurazione');
+        });
+    }
+    
+    updateAuthStatus(status) {
+        const authStatusElement = document.getElementById('authStatus');
+        if (authStatusElement) {
+            authStatusElement.textContent = status;
+        }
+    }
+    
+    async authenticateGoogle() {
+        if (!this.googleSheetsReady) {
+            this.showNotification('Google Sheets API non ancora pronto. Riprova tra qualche secondo.', 'warning');
+            return;
+        }
+        
+        try {
+            const authInstance = gapi.auth2.getAuthInstance();
+            if (!authInstance.isSignedIn.get()) {
+                await authInstance.signIn();
+            }
+            
+            this.updateAuthStatus('Autenticato ✅');
+            document.getElementById('authGoogleBtn').style.display = 'none';
+            this.showNotification('Autenticazione Google completata!', 'success');
+            
+        } catch (error) {
+            console.error('Errore autenticazione:', error);
+            this.showNotification('Errore durante l\'autenticazione Google', 'error');
+        }
+    }
+    
+    /* ----------------- Export Functions ----------------- */
+    exportToCSV(timeframe = null) {
+        const tfToExport = timeframe || this.currentTimeframe;
+        const trades = this.data[tfToExport].trades;
+        
+        // Ordina i trade per data e orario
+        const sortedTrades = trades.slice().sort((a, b) => {
+            const dateA = new Date(`${a.date} ${a.time}`);
+            const dateB = new Date(`${b.date} ${b.time}`);
+            return dateA - dateB;
+        });
+        
+        // Crea l'header CSV
+        let csvContent = 'Data,Orario,Prezzo Entrata,';
+        
+        // Aggiungi header per ogni combinazione SL/RR
+        this.stopLossLevels.forEach(sl => {
+            this.riskRewardRatios.forEach(rr => {
+                csvContent += `SL${sl}-RR${rr},`;
+            });
+        });
+        
+        // Aggiungi header per statistiche
+        csvContent += 'Risultato Migliore,Percentuale Migliore,Note\n';
+        
+        // Aggiungi i dati
+        sortedTrades.forEach(trade => {
+            const date = trade.date || '';
+            const time = trade.time || '';
+            const price = trade.entryPrice || '';
+            
+            csvContent += `${date},${time},${price},`;
+            
+            // Aggiungi risultati per ogni combinazione
+            this.stopLossLevels.forEach(sl => {
+                this.riskRewardRatios.forEach(rr => {
+                    const result = trade.results[sl][rr];
+                    const resultText = result === 'tp' ? 'TP' : result === 'sl' ? 'SL' : '';
+                    csvContent += `${resultText},`;
+                });
+            });
+            
+            // Calcola il risultato migliore
+            const bestResult = this.calculateBestResult(trade);
+            csvContent += `${bestResult.combination},${bestResult.percentage},\n`;
+        });
+        
+        return csvContent;
+    }
+    
+    calculateBestResult(trade) {
+        let bestPercentage = -Infinity;
+        let bestCombination = '';
+        
+        this.stopLossLevels.forEach(sl => {
+            this.riskRewardRatios.forEach(rr => {
+                const result = trade.results[sl][rr];
+                if (result === 'tp') {
+                    const percentage = this.rrValues[rr];
+                    if (percentage > bestPercentage) {
+                        bestPercentage = percentage;
+                        bestCombination = `SL${sl}-RR${rr}`;
+                    }
+                }
+            });
+        });
+        
+        return {
+            combination: bestCombination,
+            percentage: bestPercentage > -Infinity ? `+${bestPercentage}%` : '0%'
+        };
+    }
+    
+    async exportToGoogleSheets() {
+        if (!this.googleSheetsReady) {
+            this.showNotification('Google Sheets API non ancora pronto', 'error');
+            return;
+        }
+        
+        try {
+            // Verifica autenticazione
+            const authInstance = gapi.auth2.getAuthInstance();
+            if (!authInstance.isSignedIn.get()) {
+                await authInstance.signIn();
+            }
+            
+            const spreadsheetId = await this.createOrUpdateSpreadsheet();
+            const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+            
+            // Crea link cliccabile nella notifica
+            const notification = document.createElement('div');
+            notification.className = 'notification-area success';
+            notification.innerHTML = `Dati esportati in Google Sheets! <a href="${url}" target="_blank" style="color: white; text-decoration: underline;">Apri qui</a>`;
+            
+            const container = document.querySelector('.container');
+            container.insertBefore(notification, container.firstChild);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 10000);
+            
+            // Copia URL negli appunti
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(url);
+                console.log('URL copiato negli appunti');
+            }
+            
+        } catch (error) {
+            console.error('Errore esportazione Google Sheets:', error);
+            this.showNotification('Errore durante l\'esportazione in Google Sheets: ' + error.message, 'error');
+        }
+    }
+    
+    async createOrUpdateSpreadsheet() {
+        const spreadsheetTitle = `Trading Data - ${new Date().toLocaleDateString()}`;
+        
+        // Crea un nuovo foglio di calcolo
+        const createResponse = await gapi.client.sheets.spreadsheets.create({
+            properties: {
+                title: spreadsheetTitle
+            }
+        });
+        
+        const spreadsheetId = createResponse.result.spreadsheetId;
+        
+        // Prepara i dati per tutti i timeframe
+        const allSheetsData = [];
+        
+        this.timeframes.forEach(tf => {
+            const trades = this.data[tf.code].trades;
+            const sortedTrades = trades.slice().sort((a, b) => {
+                const dateA = new Date(`${a.date} ${a.time}`);
+                const dateB = new Date(`${b.date} ${b.time}`);
+                return dateA - dateB;
+            });
+            
+            // Crea header
+            const headers = ['Data', 'Orario', 'Prezzo Entrata'];
+            this.stopLossLevels.forEach(sl => {
+                this.riskRewardRatios.forEach(rr => {
+                    headers.push(`SL${sl}-RR${rr}`);
+                });
+            });
+            headers.push('Risultato Migliore', 'Percentuale Migliore', 'Note');
+            
+            // Crea righe dati
+            const rows = [headers];
+            sortedTrades.forEach(trade => {
+                const row = [
+                    trade.date || '',
+                    trade.time || '',
+                    trade.entryPrice || ''
+                ];
+                
+                this.stopLossLevels.forEach(sl => {
+                    this.riskRewardRatios.forEach(rr => {
+                        const result = trade.results[sl][rr];
+                        row.push(result === 'tp' ? 'TP' : result === 'sl' ? 'SL' : '');
+                    });
+                });
+                
+                const bestResult = this.calculateBestResult(trade);
+                row.push(bestResult.combination, bestResult.percentage, '');
+                
+                rows.push(row);
+            });
+            
+            allSheetsData.push({
+                sheetName: `${tf.code} - ${tf.name}`,
+                data: rows
+            });
+        });
+        
+        // Crea fogli per ogni timeframe
+        const requests = [];
+        
+        allSheetsData.forEach((sheetData, index) => {
+            if (index > 0) { // Il primo foglio esiste già
+                requests.push({
+                    addSheet: {
+                        properties: {
+                            title: sheetData.sheetName
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Esegui le richieste per creare i fogli
+        if (requests.length > 0) {
+            await gapi.client.sheets.spreadsheets.batchUpdate({
+                spreadsheetId: spreadsheetId,
+                requests: requests
+            });
+        }
+        
+        // Rinomina il primo foglio
+        await gapi.client.sheets.spreadsheets.batchUpdate({
+            spreadsheetId: spreadsheetId,
+            requests: [{
+                updateSheetProperties: {
+                    properties: {
+                        sheetId: 0,
+                        title: allSheetsData[0].sheetName
+                    },
+                    fields: 'title'
+                }
+            }]
+        });
+        
+        // Popola i dati in ogni foglio
+        for (let i = 0; i < allSheetsData.length; i++) {
+            const sheetData = allSheetsData[i];
+            
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: spreadsheetId,
+                range: `${sheetData.sheetName}!A1`,
+                valueInputOption: 'USER_ENTERED',
+                values: sheetData.data
+            });
+            
+            // Applica formattazione
+            await this.formatGoogleSheet(spreadsheetId, i, sheetData.data.length);
+        }
+        
+        // Rendi il foglio condivisibile
+        await this.makeSheetShareable(spreadsheetId);
+        
+        return spreadsheetId;
+    }
+    
+    async formatGoogleSheet(spreadsheetId, sheetId, rowCount) {
+        const requests = [
+            // Formatta header
+            {
+                repeatCell: {
+                    range: {
+                        sheetId: sheetId,
+                        startRowIndex: 0,
+                        endRowIndex: 1
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: {
+                                red: 0.2,
+                                green: 0.5,
+                                blue: 0.55
+                            },
+                            textFormat: {
+                                foregroundColor: {
+                                    red: 1,
+                                    green: 1,
+                                    blue: 1
+                                },
+                                bold: true
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat(backgroundColor,textFormat)'
+                }
+            },
+            // Congela la prima riga
+            {
+                updateSheetProperties: {
+                    properties: {
+                        sheetId: sheetId,
+                        gridProperties: {
+                            frozenRowCount: 1
+                        }
+                    },
+                    fields: 'gridProperties.frozenRowCount'
+                }
+            },
+            // Formatta le colonne data/orario
+            {
+                repeatCell: {
+                    range: {
+                        sheetId: sheetId,
+                        startColumnIndex: 0,
+                        endColumnIndex: 2,
+                        startRowIndex: 1,
+                        endRowIndex: rowCount
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            horizontalAlignment: 'CENTER',
+                            textFormat: {
+                                bold: true
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat(horizontalAlignment,textFormat)'
+                }
+            }
+        ];
+        
+        await gapi.client.sheets.spreadsheets.batchUpdate({
+            spreadsheetId: spreadsheetId,
+            requests: requests
+        });
+    }
+    
+    async makeSheetShareable(spreadsheetId) {
+        try {
+            await gapi.client.request({
+                path: `https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`,
+                method: 'POST',
+                body: {
+                    role: 'reader',
+                    type: 'anyone'
+                }
+            });
+        } catch (error) {
+            console.log('Impossibile rendere il foglio pubblico:', error);
+        }
+    }
+    
+    downloadCSV(timeframe = null) {
+        const tfToExport = timeframe || this.currentTimeframe;
+        const csvContent = this.exportToCSV(tfToExport);
+        const tfInfo = this.timeframes.find(t => t.code === tfToExport);
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `trading_data_${tfToExport}_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        
+        URL.revokeObjectURL(url);
+        this.showNotification(`File CSV ${tfInfo.name} scaricato!`, 'success');
+    }
+    
+    downloadAllCSV() {
+        this.timeframes.forEach((tf, index) => {
+            setTimeout(() => {
+                this.downloadCSV(tf.code);
+            }, 100 * index);
         });
     }
     
@@ -426,27 +845,6 @@ class MultiTimeframeTradingTester {
         this.showNotification('Dati esportati con successo!', 'success');
     }
     
-    exportCurrent() {
-        const exportData = {
-            version: '2.0',
-            timestamp: new Date().toISOString(),
-            timeframe: this.currentTimeframe,
-            data: this.data[this.currentTimeframe]
-        };
-        
-        const dataStr = JSON.stringify(exportData, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `trading_data_${this.currentTimeframe}_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        
-        URL.revokeObjectURL(url);
-        this.showNotification(`Dati ${this.currentTimeframe} esportati con successo!`, 'success');
-    }
-    
     handleImport(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -505,7 +903,7 @@ class MultiTimeframeTradingTester {
     showNotification(message, type = 'info') {
         const notification = document.createElement('div');
         notification.className = `notification-area ${type}`;
-        notification.textContent = message;
+        notification.innerHTML = message;
         
         const container = document.querySelector('.container');
         container.insertBefore(notification, container.firstChild);
